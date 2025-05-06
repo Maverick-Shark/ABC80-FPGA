@@ -107,11 +107,47 @@ module ABC80_MiST (
 `ifdef USE_AUDIO_IN
 	input         AUDIO_IN,
 `endif
-`ifdef SIDI128_EXPANSION
+
+// SIDI128 & POSEIDON TAPE EXPANSION
+// Define a combined macro for SiDi128 and Poseidon
+`ifdef USE_EXPANSION
+    `define ENABLE_EXPANSION 1
+`elsif SIDI128_EXPANSION
+    `define ENABLE_EXPANSION 1
+`endif
+`ifdef ENABLE_EXPANSION
 	input         UART_CTS,
 	output        UART_RTS,
 	inout         EXP7,
 	inout         MOTOR_CTRL,
+`endif
+`ifdef USE_EXTBUS	
+	output [23:0]  BUS_A = 24'b0,
+	inout  [15:0]  BUS_D = 16'b0,
+	inout          USER1,
+	inout          USER2,
+	inout          USER3,
+	inout          USER5,
+	inout          USER6,
+	inout          USER7,
+	inout          N41,
+	inout          N42,
+	inout          N43,
+	inout          N44,
+	inout          N45,
+	inout          N46,
+	inout          N47,
+	inout          N48,
+	output         BUS_nRESET,
+	output         BUS_nM1,
+	output         BUS_nMREQ,
+	output         BUS_nIORQ,
+	output         BUS_nRD,
+	output         BUS_nWR,
+	output         BUS_nRFSH,
+	output         BUS_nHALT,
+	output         BUS_nBUSAK,
+	output reg     BUS_CLK,
 `endif
 	input         UART_RX,
 	output        UART_TX
@@ -172,16 +208,18 @@ assign SDRAM2_nWE = 1;
 
 localparam CONF_STR = {
 	"ABC80;;",
-	"F1,BAC,Load;",
-	"F2,BAC,Alternative Load;",
+	"F1U,BAC,Load;",
+	"F2U,BAC,Alternative Load;",
 	`SEP
 	"O2,Memory,16K,32K;",
 	"O34,Scanlines,Off,25%,50%,75%;",
 	"O5,Blend,Off,On;",
 	"O6,Tape Sounds,Off,On;",
-`ifndef SIDI128_EXPANSION
+`ifndef ENABLE_EXPANSION
+	`SEP
 	"O7,Userport,Tape,UART;",
 `endif
+	`SEP
 	"T0,Reset;",
 	"V,v1.00.",`BUILD_DATE
 };
@@ -207,11 +245,15 @@ assign      SDRAM_nWE = 1;
 
 wire clk48, clk12, pll_locked;
 pll pll(
+`ifdef CLOCK_IN_50
+	.inclk0(CLOCK_50),
+`else
 	.inclk0(CLOCK_27),
+`endif
 	.c0(clk48),
 	.c1(clk12),
-	.locked(pll_locked)
-	);
+	.locked(pll_locked)	// pll locked output
+);
 
 wire [31:0] status;
 wire  [1:0] buttons;
@@ -271,7 +313,7 @@ user_io(
 	.joystick_0     (joystick_0     ),
 	.joystick_1     (joystick_1     ),
 	.status         (status         )
-	);
+);
 
 wire        ioctl_downl;
 wire  [7:0] ioctl_index;
@@ -319,15 +361,15 @@ always @(posedge clk12) begin
 	cass_in[1] <= cass_in[0];
 end
 
-`ifdef SIDI128_EXPANSION
-assign MOTOR_CTRL = cass_relay ? 1'b0 : 1'bZ;
-assign UART_TX = uart_tx;
-assign UART_RTS = uart_rts;
-assign uart_cts = UART_CTS;
-assign EXP7 = 1'bZ;
+`ifdef ENABLE_EXPANSION
+	assign MOTOR_CTRL = cass_relay ? 1'b0 : 1'bZ;
+	assign UART_TX = uart_tx;
+	assign UART_RTS = uart_rts;
+	assign uart_cts = UART_CTS;
+	assign EXP7 = 1'bZ;
 `else
-assign UART_TX = uart_en ? uart_tx : ~cass_relay;
-assign uart_cts = 0;
+	assign UART_TX = uart_en ? uart_tx : ~cass_relay;
+	assign uart_cts = 0;
 `endif
 
 ABC80 ABC80 (
@@ -399,7 +441,7 @@ mist_dual_video #(.COLOR_DEPTH(1), .SD_HCNT_WIDTH(10), .OUT_COLOR_DEPTH(VGA_BITS
 	.scanlines      ( scanlines        ),
 	.ypbpr          ( ypbpr            ),
 	.no_csync       ( no_csync         )
-	);
+);
 
 `ifdef USE_HDMI
 
@@ -431,9 +473,9 @@ dac_l(
 	.res_n_i(1),
 	.dac_i(audio_mix),
 	.dac_o(AUDIO_L)
-	);
+);
 
-	assign AUDIO_R = AUDIO_L;
+assign AUDIO_R = AUDIO_L;
 
 `ifdef I2S_AUDIO
 i2s i2s (
